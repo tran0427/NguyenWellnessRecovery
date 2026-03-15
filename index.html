@@ -1402,7 +1402,7 @@
   <div class="carousel-wrap fade-in">
     <div class="carousel">
       <div class="carousel-track" id="carousel-track">
-        <!-- Slides injected by JS from localStorage -->
+        <!-- Slides injected by JS from JSONBin -->
       </div>
     </div>
     <div class="carousel-controls">
@@ -1549,21 +1549,35 @@
   }, { threshold: 0.12 });
   document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
-  // ── ADMIN PASSWORD (change this to whatever you want)
+  // ── JSONBIN CONFIG
+  const BIN_ID = '69b6c142aa77b81da9e83174';
+  const ACCESS_KEY = '$2a$10$KkAvkl29XJegsZvkQb17HuQxjXd2CBIG5SJRy.NBG34VnCc/ZP.n.';
+  const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+  // ── ADMIN PASSWORD
   const ADMIN_PASSWORD = 'admin';
 
-  // ── DEFAULT REVIEWS (shown only when no real reviews exist yet)
-  const DEFAULT_REVIEWS = [];
-
-  // ── REVIEW STORAGE
-  function getReviews() {
+  // ── FETCH reviews from JSONBin
+  async function getReviews() {
     try {
-      return JSON.parse(localStorage.getItem('nwr_reviews') || 'null') || DEFAULT_REVIEWS;
-    } catch(e) { return DEFAULT_REVIEWS; }
+      const res = await fetch(BIN_URL + '/latest', {
+        headers: { 'X-Access-Key': ACCESS_KEY }
+      });
+      const data = await res.json();
+      return data.record.reviews || [];
+    } catch(e) { return []; }
   }
 
-  function saveReviews(reviews) {
-    try { localStorage.setItem('nwr_reviews', JSON.stringify(reviews)); } catch(e) {}
+  // ── SAVE reviews to JSONBin
+  async function saveReviews(reviews) {
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Access-Key': ACCESS_KEY
+      },
+      body: JSON.stringify({ reviews })
+    });
   }
 
   // ── CAROUSEL ENGINE
@@ -1581,14 +1595,13 @@
     return name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
   }
 
-  function renderCarousel() {
-    const reviews = getReviews();
+  function renderCarousel(reviews) {
     track.innerHTML = '';
     dotsContainer.innerHTML = '';
     current = 0;
     clearInterval(autoInterval);
 
-    if (reviews.length === 0) {
+    if (!reviews || reviews.length === 0) {
       track.innerHTML = `
         <div class="testimonial-slide">
           <div class="stars">★★★★★</div>
@@ -1645,19 +1658,19 @@
     const pw = prompt('Enter admin password:');
     if (pw === ADMIN_PASSWORD) {
       isAdminMode = true;
-      renderCarousel();
-      alert('Admin mode ON — you can now delete reviews by clicking 🗑 on each one.');
+      loadAndRender();
+      alert('Admin mode ON — click 🗑 on any review to delete it.');
     } else if (pw !== null) {
       alert('Incorrect password.');
     }
   }
 
-  function deleteReview(index) {
+  async function deleteReview(index) {
     if (!confirm('Delete this review permanently?')) return;
-    const reviews = getReviews();
+    const reviews = await getReviews();
     reviews.splice(index, 1);
-    saveReviews(reviews);
-    renderCarousel();
+    await saveReviews(reviews);
+    loadAndRender();
   }
 
   // Secret admin trigger: click section title 5 times
@@ -1687,7 +1700,7 @@
   });
 
   // ── REVIEW SUBMIT
-  function submitReview() {
+  async function submitReview() {
     const name = document.getElementById('review-name').value.trim();
     const title = document.getElementById('review-title').value.trim();
     const text = document.getElementById('review-text').value.trim();
@@ -1695,16 +1708,21 @@
       alert('Please fill in your name, review, and select a star rating.');
       return;
     }
-    const reviews = getReviews();
+    const btn = document.querySelector('.review-form button');
+    btn.textContent = 'Submitting...';
+    btn.disabled = true;
+
+    const reviews = await getReviews();
     reviews.push({ name, title, text, stars: selectedStars, date: Date.now() });
-    saveReviews(reviews);
-    renderCarousel();
+    await saveReviews(reviews);
+    renderCarousel(reviews);
+
     document.querySelector('.review-form').style.display = 'none';
     document.querySelector('.star-picker').style.display = 'none';
     document.getElementById('review-success').style.display = 'block';
   }
 
-  // Add admin delete button style
+  // ── ADMIN DELETE BUTTON STYLES
   const adminStyle = document.createElement('style');
   adminStyle.textContent = `
     .admin-delete-btn {
@@ -1722,8 +1740,15 @@
   `;
   document.head.appendChild(adminStyle);
 
-  // ── INIT
-  renderCarousel();
+  // ── INIT — load from JSONBin on page load
+  async function loadAndRender() {
+    track.innerHTML = '<div class="testimonial-slide"><p class="testimonial-quote">Loading reviews...</p></div>';
+    const reviews = await getReviews();
+    renderCarousel(reviews);
+  }
+
+  loadAndRender();
+
 </script>
 </body>
 </html>
